@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Ring + Spinning N (ESM)</title>
+  <style>
+    html,body{margin:0;height:100%;background:#000;}
+    #wrap{position:relative;width:100vw;height:100vh;overflow:hidden;}
+    canvas{display:block;width:100%;height:100%;}
+    #debug{position:fixed;left:12px;bottom:12px;max-width:calc(100% - 24px);padding:10px 12px;background:rgba(0,0,0,.65);border:1px solid rgba(255,255,255,.18);border-radius:10px;color:#fff;font:12px/1.4 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;white-space:pre-wrap;z-index:9999;display:none;}
+  </style>
+</head>
+<body>
+  <div id="wrap"></div>
+  <div id="debug"></div>
+
+  <script type="module">
+    const debugEl = document.getElementById("debug");
+    function showError(msg){ debugEl.style.display="block"; debugEl.textContent=msg; }
+
+    try{
+      import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
+      import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js";
+      import { FontLoader } from "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/FontLoader.js";
+      import { TextGeometry } from "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/geometries/TextGeometry.js";
+      import { EffectComposer } from "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/postprocessing/EffectComposer.js";
+      import { RenderPass } from "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/postprocessing/RenderPass.js";
+      import { UnrealBloomPass } from "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/postprocessing/UnrealBloomPass.js";
+
+      const container = document.getElementById("wrap");
+
+      const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true, powerPreference:"high-performance" });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.setSize(container.clientWidth, container.clientHeight);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      container.appendChild(renderer.domElement);
+
+      const scene = new THREE.Scene();
+
+      const camera = new THREE.PerspectiveCamera(40, container.clientWidth / container.clientHeight, 0.1, 100);
+      camera.position.set(0, 0.3, 6);
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.enablePan = false;
+      controls.enableZoom = false;
+      controls.enableRotate = false;
+
+      const keyLight = new THREE.DirectionalLight(0xffffff, 2.2);
+      keyLight.position.set(3, 4, 5);
+      scene.add(keyLight);
+
+      const fillLight = new THREE.DirectionalLight(0xffffff, 1.2);
+      fillLight.position.set(-4, 1.5, 3);
+      scene.add(fillLight);
+
+      const rimLight = new THREE.DirectionalLight(0xffffff, 1.6);
+      rimLight.position.set(0, -2, -5);
+      scene.add(rimLight);
+
+      scene.add(new THREE.AmbientLight(0xffffff, 0.25));
+
+      const silverMetal = new THREE.MeshStandardMaterial({ color:0xd9d9d9, metalness:1.0, roughness:0.25 });
+      const pinkGlow = new THREE.MeshStandardMaterial({
+        color:0xFD4DA6, metalness:0.25, roughness:0.15,
+        emissive:new THREE.Color(0xFD4DA6), emissiveIntensity:1.0
+      });
+
+      const ringGeo = new THREE.TorusGeometry(2.15, 0.16, 48, 240);
+      const ring = new THREE.Mesh(ringGeo, silverMetal);
+      ring.rotation.x = THREE.MathUtils.degToRad(8);
+      scene.add(ring);
+
+      const nGroup = new THREE.Group();
+      nGroup.position.set(0, 0, 0.12);
+      scene.add(nGroup);
+
+      const composer = new EffectComposer(renderer);
+      composer.addPass(new RenderPass(scene, camera));
+      const bloomPass = new UnrealBloomPass(
+        new THREE.Vector2(container.clientWidth, container.clientHeight),
+        1.25, 0.35, 0.15
+      );
+      composer.addPass(bloomPass);
+
+      const fontLoader = new FontLoader();
+      fontLoader.load(
+        "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/fonts/helvetiker_bold.typeface.json",
+        (font)=>{
+          const textGeo = new TextGeometry("N", {
+            font, size:1.9, height:0.35, curveSegments:10,
+            bevelEnabled:true, bevelThickness:0.06, bevelSize:0.04, bevelSegments:4
+          });
+          textGeo.computeBoundingBox();
+          textGeo.center();
+          const nMesh = new THREE.Mesh(textGeo, pinkGlow);
+          nMesh.position.z = 0.05;
+          nGroup.add(nMesh);
+        },
+        undefined,
+        (err)=> showError("폰트 로딩 실패\n" + (err && err.message ? err.message : String(err)))
+      );
+
+      const clock = new THREE.Clock();
+      function animate(){
+        const t = clock.getElapsedTime();
+        nGroup.rotation.y = t * 0.9;
+        nGroup.rotation.x = Math.sin(t * 0.7) * 0.06;
+        controls.update();
+        composer.render();
+        requestAnimationFrame(animate);
+      }
+      animate();
+
+      function onResize(){
+        const w = container.clientWidth;
+        const h = container.clientHeight;
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+        renderer.setSize(w, h);
+        composer.setSize(w, h);
+      }
+      window.addEventListener("resize", onResize);
+
+    }catch(e){
+      showError("초기화 에러\n" + (e && e.stack ? e.stack : String(e)));
+    }
+  </script>
+</body>
+</html>
