@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Ring + Spinning N (Module)</title>
+  <title>Ring + Spinning N (Glossy Metal, Low Glow)</title>
   <style>
     html,body{margin:0;height:100%;background:#000;}
     #wrap{position:relative;width:100vw;height:100vh;overflow:hidden;}
@@ -20,9 +20,7 @@
     import { OrbitControls } from "https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js";
     import { FontLoader } from "https://unpkg.com/three@0.160.0/examples/jsm/loaders/FontLoader.js";
     import { TextGeometry } from "https://unpkg.com/three@0.160.0/examples/jsm/geometries/TextGeometry.js";
-    import { EffectComposer } from "https://unpkg.com/three@0.160.0/examples/jsm/postprocessing/EffectComposer.js";
-    import { RenderPass } from "https://unpkg.com/three@0.160.0/examples/jsm/postprocessing/RenderPass.js";
-    import { UnrealBloomPass } from "https://unpkg.com/three@0.160.0/examples/jsm/postprocessing/UnrealBloomPass.js";
+    import { RoomEnvironment } from "https://unpkg.com/three@0.160.0/examples/jsm/environments/RoomEnvironment.js";
 
     const debugEl = document.getElementById("debug");
     const showError = (msg) => { debugEl.style.display = "block"; debugEl.textContent = msg; };
@@ -30,17 +28,19 @@
     try{
       const container = document.getElementById("wrap");
 
-      // Renderer
+      // Renderer (색/톤매핑을 “메탈 하이라이트”에 유리하게)
       const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true, powerPreference:"high-performance" });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
       renderer.setSize(container.clientWidth, container.clientHeight);
       renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.0;
       container.appendChild(renderer.domElement);
 
       // Scene / Camera
       const scene = new THREE.Scene();
-      const camera = new THREE.PerspectiveCamera(40, container.clientWidth / container.clientHeight, 0.1, 100);
-      camera.position.set(0, 0.3, 6);
+      const camera = new THREE.PerspectiveCamera(38, container.clientWidth / container.clientHeight, 0.1, 100);
+      camera.position.set(0, 0.15, 6.2);
 
       // Controls (고정 연출)
       const controls = new OrbitControls(camera, renderer.domElement);
@@ -49,94 +49,109 @@
       controls.enableZoom = false;
       controls.enableRotate = false;
 
-      // Lights
-      const keyLight = new THREE.DirectionalLight(0xffffff, 2.2);
-      keyLight.position.set(3, 4, 5);
-      scene.add(keyLight);
+      // Environment (메탈릭 반사 핵심)
+      const pmrem = new THREE.PMREMGenerator(renderer);
+      const envTex = pmrem.fromScene(new RoomEnvironment(renderer), 0.04).texture;
+      scene.environment = envTex;
 
-      const fillLight = new THREE.DirectionalLight(0xffffff, 1.2);
-      fillLight.position.set(-4, 1.5, 3);
-      scene.add(fillLight);
+      // Lights (네온 느낌 방지: 강도 낮추고 하이라이트 중심)
+      const key = new THREE.DirectionalLight(0xffffff, 2.2);
+      key.position.set(4, 4.5, 5);
+      scene.add(key);
 
-      const rimLight = new THREE.DirectionalLight(0xffffff, 1.6);
-      rimLight.position.set(0, -2, -5);
-      scene.add(rimLight);
+      const fill = new THREE.DirectionalLight(0xffffff, 0.9);
+      fill.position.set(-5, 2.0, 4);
+      scene.add(fill);
 
-      scene.add(new THREE.AmbientLight(0xffffff, 0.25));
+      const rim = new THREE.DirectionalLight(0xffffff, 1.4);
+      rim.position.set(0, -1.5, -6);
+      scene.add(rim);
 
-      // Materials
-      const silverMetal = new THREE.MeshStandardMaterial({
-        color: 0xd9d9d9,
+      scene.add(new THREE.AmbientLight(0xffffff, 0.15));
+
+      // ===== Materials =====
+      // 링: 메탈릭 실버, “보이게” roughness 너무 낮추지 않음
+      const silverMetal = new THREE.MeshPhysicalMaterial({
+        color: 0xD8D8D8,
         metalness: 1.0,
-        roughness: 0.25
+        roughness: 0.18,
+        clearcoat: 0.55,
+        clearcoatRoughness: 0.08
       });
 
-      const pinkGlow = new THREE.MeshStandardMaterial({
+      // N: 핫핑크 “광택” + 메탈 느낌 (발광 거의 0)
+      const pinkGloss = new THREE.MeshPhysicalMaterial({
         color: 0xFD4DA6,
-        metalness: 0.25,
-        roughness: 0.15,
-        emissive: new THREE.Color(0xFD4DA6),
-        emissiveIntensity: 1.0
+        metalness: 0.65,
+        roughness: 0.22,
+        clearcoat: 0.75,
+        clearcoatRoughness: 0.10,
+        emissive: new THREE.Color(0x000000),
+        emissiveIntensity: 0.0
       });
 
-      // Ring (고정)
-      const ringGeo = new THREE.TorusGeometry(2.15, 0.16, 48, 240);
+      // ===== Ring (고정) =====
+      const ringGeo = new THREE.TorusGeometry(2.25, 0.19, 64, 320);
       const ring = new THREE.Mesh(ringGeo, silverMetal);
-      ring.rotation.x = THREE.MathUtils.degToRad(8);
+      ring.rotation.x = THREE.MathUtils.degToRad(10);
+      ring.rotation.y = THREE.MathUtils.degToRad(12);
       scene.add(ring);
 
-      // N Group (회전)
+      // 링이 배경에 묻히면 이 “얇은 라이트림”만 살짝 추가(과하면 0으로)
+      const ringRim = new THREE.MeshPhysicalMaterial({
+        color: 0xffffff,
+        metalness: 0.0,
+        roughness: 0.9,
+        transparent: true,
+        opacity: 0.06
+      });
+      const ringRimMesh = new THREE.Mesh(ringGeo, ringRim);
+      ringRimMesh.scale.setScalar(1.003);
+      ringRimMesh.rotation.copy(ring.rotation);
+      scene.add(ringRimMesh);
+
+      // ===== N Group (회전 대상) =====
       const nGroup = new THREE.Group();
-      nGroup.position.set(0, 0, 0.12);
+      nGroup.position.set(0, 0, 0.10);
+      nGroup.rotation.y = THREE.MathUtils.degToRad(12);
       scene.add(nGroup);
 
-      // Postprocessing (Bloom)
-      const composer = new EffectComposer(renderer);
-      composer.addPass(new RenderPass(scene, camera));
-
-      const bloomPass = new UnrealBloomPass(
-        new THREE.Vector2(container.clientWidth, container.clientHeight),
-        1.25,  // strength
-        0.35,  // radius
-        0.15   // threshold
-      );
-      composer.addPass(bloomPass);
-
-      // Load font + build "N"
+      // Font + build "N"
       const fontLoader = new FontLoader();
       fontLoader.load(
         "https://unpkg.com/three@0.160.0/examples/fonts/helvetiker_bold.typeface.json",
         (font) => {
           const textGeo = new TextGeometry("N", {
             font,
-            size: 1.9,
-            height: 0.35,
+            size: 1.95,
+            height: 0.38,
             curveSegments: 10,
             bevelEnabled: true,
-            bevelThickness: 0.06,
+            bevelThickness: 0.055,
             bevelSize: 0.04,
             bevelSegments: 4
           });
           textGeo.computeBoundingBox();
           textGeo.center();
 
-          const nMesh = new THREE.Mesh(textGeo, pinkGlow);
-          nMesh.position.z = 0.05;
+          const nMesh = new THREE.Mesh(textGeo, pinkGloss);
+          nMesh.position.z = 0.06;
           nGroup.add(nMesh);
         },
         undefined,
         (err) => showError("폰트 로딩 실패로 N 생성이 안 됐습니다.\n" + (err?.message || String(err)))
       );
 
-      // Animation
+      // Animation (N만 회전, 링 고정)
       const clock = new THREE.Clock();
       const animate = () => {
         const t = clock.getElapsedTime();
-        nGroup.rotation.y = t * 0.9;
-        nGroup.rotation.x = Math.sin(t * 0.7) * 0.06;
+
+        nGroup.rotation.y = t * 0.85;
+        nGroup.rotation.x = Math.sin(t * 0.7) * 0.04;
 
         controls.update();
-        composer.render();
+        renderer.render(scene, camera);
         requestAnimationFrame(animate);
       };
       animate();
@@ -148,7 +163,6 @@
         camera.aspect = w / h;
         camera.updateProjectionMatrix();
         renderer.setSize(w, h);
-        composer.setSize(w, h);
       };
       window.addEventListener("resize", onResize);
 
